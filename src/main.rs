@@ -3,10 +3,12 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+#[macro_use]
+extern crate dotenv_codegen;
 extern crate dotenv;
 
+
 use dotenv::dotenv;
-use std::env;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -41,17 +43,17 @@ fn main() {
         children.push(thread::spawn(move || -> Media {
             let client = reqwest::Client::new();
             let params = reqwest::multipart::Form::new()
-                .file("file", file).unwrap();
+                .file("file", &file).unwrap();
 
             let url = format!("{}/upload", dotenv!("MEDIA_URL"));
 
-            let result: Media = client.post(url)
+            let result: Media = client.post(url.as_str())
                 .multipart(params)
                 .send().unwrap()
                 .json::<Vec<Media>>().unwrap()
                 .pop().unwrap();
 
-            println!("uploaded file {}, result={:?}", file, result);
+            println!("uploaded file {:?}, result={:?}", file, result);
 
             result
         }));
