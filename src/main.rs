@@ -30,7 +30,6 @@ fn main() {
         let config = read_config_file();
         let media_url = config.media_url;
 
-        let folder = matches.value_of("folder").unwrap();
         let results_file: File = open_results_file();
 
         let files: Vec<PathBuf> = read_dir(folder.to_owned());
@@ -98,13 +97,6 @@ fn read_dir(folder: String) -> Vec<PathBuf> {
         .expect("Failed to read folder")
         .map(|file| file.unwrap().path())
         .collect()
-}
-
-fn get_args() -> String {
-    let mut args = env::args().skip(1);
-    let folder = args.next().expect("Usage: ./upload [folder]");
-
-    folder
 }
 
 #[derive(Debug, Serialize, Deserialize)]
