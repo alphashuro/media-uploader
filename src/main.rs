@@ -5,42 +5,40 @@ extern crate serde_derive;
 extern crate serde_json;
 
 use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::fs::{self, File, OpenOptions};
+use std::path::PathBuf;
 use std::thread;
 
 fn main() {
-    let mut args = env::args();
-    let _name = args.next();
-    let media_url = args.next().expect("Usage: ./upload [media_url] [folder]");
-    let folder = args.next().expect("Usage: ./upload [media_url] [folder]");
-    let folder = Path::new(&folder);
+    let (media_url, folder) = get_args();
+    let results_file: File = open_results_file();
 
-    let results_file = fs::OpenOptions::new()
-        .write(true)
-        .append(false)
-        .create(true)
-        .open("results.json")
-        .expect("Could not create/update results.json file");
+    let files: Vec<PathBuf> = read_dir(folder);
+    let results: Vec<Media> = upload_files(media_url, files);
 
-    let files: Vec<PathBuf> = fs::read_dir(folder)
+    write(results_file, results)
+}
+
+fn write(file: File, data: Vec<Media>) {
+    serde_json::to_writer_pretty(file, &data)
+        .expect("Failed to convert data to JSON and write to file");
+}
+
+fn read_dir(folder: String) -> Vec<PathBuf> {
+    let folder = PathBuf::from(&folder);
+
+    fs::read_dir(folder)
         .expect("Failed to read folder")
         .map(|file| file.unwrap().path())
-        .collect();
+        .collect()
+}
 
-    let results: Vec<Vec<Media>> = files
-        .chunks(10)
-        .map(|paths| {
-            let url = media_url.clone();
-            let aths = paths.to_owned();
+fn get_args() -> (String, String) {
+    let mut args = env::args().skip(1);
+    let media_url = args.next().expect("Usage: ./upload [media_url] [folder]");
+    let folder = args.next().expect("Usage: ./upload [media_url] [folder]");
 
-            thread::spawn(move || upload(url, paths))
-        })
-        .map(|handle| handle.join().unwrap())
-        .collect();
-
-    serde_json::to_writer_pretty(results_file, &results)
-        .expect("Failed to convert upload results to JSON and write to file");
+    (media_url, folder)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,6 +47,19 @@ struct Media {
     #[serde(rename = "originalName")] original_name: String,
     mimetype: String,
     size: i64,
+}
+
+fn upload_files(media_url: String, files: Vec<PathBuf>) -> Vec<Media> {
+    files
+        .chunks(10)
+        .map(|paths| {
+            let url = media_url.clone();
+            let paths = paths.to_owned();
+
+            thread::spawn(move || upload(url, paths))
+        })
+        .flat_map(|handle| handle.join().unwrap().into_iter())
+        .collect()
 }
 
 fn upload(url: String, paths: Vec<PathBuf>) -> Vec<Media> {
@@ -76,4 +87,13 @@ fn upload(url: String, paths: Vec<PathBuf>) -> Vec<Media> {
     println!("uploaded {:?}, result={:?}", paths, result);
 
     result
+}
+
+fn open_results_file() -> File {
+    OpenOptions::new()
+        .write(true)
+        .append(false)
+        .create(true)
+        .open("results.json")
+        .expect("Could not create/update results.json file")
 }
