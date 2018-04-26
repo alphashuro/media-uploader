@@ -1,6 +1,6 @@
 [package]
 name = "twitter-bulk-media-upload"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Alpha Shuro <alphashuro@gmail.com>"]
 
 [dependencies]
@@ -8,5 +8,3 @@ reqwest = "0.8.5"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-dotenv = "*"
-dotenv_codegen = "*"
