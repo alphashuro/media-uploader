@@ -1,5 +1,5 @@
 [package]
-name = "twitter-bulk-media-upload"
+name = "upload"
 version = "1.0.0"
 authors = ["Alpha Shuro <alphashuro@gmail.com>"]
 
@@ -8,3 +8,5 @@ reqwest = "0.8.5"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
+toml = "*"
+clap = "*"
