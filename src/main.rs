@@ -3,12 +3,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
-#[macro_use]
-extern crate dotenv_codegen;
-extern crate dotenv;
 
-
-use dotenv::dotenv;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -18,60 +13,74 @@ use std::io::Write;
 #[derive(Debug, Serialize, Deserialize)]
 struct Media {
     id: String,
-    #[serde(rename = "originalName")]
-    original_name: String,
+    #[serde(rename = "originalName")] original_name: String,
     mimetype: String,
-    size: i64
+    size: i64,
 }
 
 fn main() {
-    dotenv().ok();
     let mut args = env::args();
-
     let _name = args.next();
-    let folder = args.next().expect("Usage: ./upload [folder]");
+    let media_url = args.next().expect("Usage: ./upload [media_url] [folder]");
+    let folder = args.next().expect("Usage: ./upload [media_url] [folder]");
     let folder = Path::new(&folder);
 
-    let files = fs::read_dir(folder).unwrap();
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .append(false)
+        .create(true)
+        .open("results.json")
+        .expect("Could not create/update results.json file");
 
-    let mut children = vec![];
+    let files = fs::read_dir(folder).expect("Failed to read folder");
 
-    for (i, file) in files.enumerate() {
-        let file = file.unwrap().path();
-        println!("index {} file {:?}", i, file);
+    let paths: Vec<std::path::PathBuf> = files
+        .map(|file| {
+            let file = file.unwrap();
+            file.path()
+        })
+        .collect();
 
-        children.push(thread::spawn(move || -> Media {
-            let client = reqwest::Client::new();
-            let params = reqwest::multipart::Form::new()
-                .file("file", &file).unwrap();
+    let results: Vec<Vec<Media>> = paths
+        .chunks(2)
+        .map(|paths| {
+            let url = media_url.clone();
+            let paths = paths.to_owned();
 
-            let url = format!("{}/upload", dotenv!("MEDIA_URL"));
+            thread::spawn(move || upload(url, paths))
+        })
+        .map(|handle| handle.join().unwrap())
+        .collect();
 
-            let result: Media = client.post(url.as_str())
-                .multipart(params)
-                .send().unwrap()
-                .json::<Vec<Media>>().unwrap()
-                .pop().unwrap();
+    let json = serde_json::to_string(&results).expect("Failed to convert upload results to JSON");
 
-            println!("uploaded file {:?}, result={:?}", file, result);
-
-            result
-        }));
+    match file.write_all(json.as_bytes()) {
+        Ok(_) => println!("results file written"),
+        Err(e) => println!("{}", e),
     }
+}
 
-    let mut results = vec![];
+fn upload(url: String, paths: Vec<std::path::PathBuf>) -> Vec<Media> {
+    let client = reqwest::Client::new();
+    let form = reqwest::multipart::Form::new();
 
-    for child in children {
-        // collect each child thread's return-value
-        match child.join() {
-            Ok(result) => results.push(result),
-            Err(e) => println!("Failed to upload {:?}", e)
-        }
-    }
+    let params = paths.iter().fold(form, |form, ref path| {
+        let name = path.file_name().unwrap().to_str().unwrap().to_owned();
 
-    let mut file = fs::OpenOptions::new().write(true).append(false).create(true).open("results.json").unwrap();
+        form.file(name, path).unwrap()
+    });
 
-    let json = serde_json::to_string(&results).unwrap();
+    let url = format!("{}/upload", url);
 
-    file.write_all(json.as_bytes());
+    let result: Vec<Media> = client
+        .post(url.as_str())
+        .multipart(params)
+        .send()
+        .expect("Could not read response from media service")
+        .json()
+        .expect("Response from media service is in an incorrect format");
+
+    println!("uploaded {:?}, result={:?}", paths, result);
+
+    result
 }
